@@ -1,0 +1,248 @@
+/*
+ * L2_3.3_PUT_TOGETHER.c
+ *
+ * Created: 9/26/2019 10:40:45 PM
+ * Author : 86185
+ */ 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+volatile unsigned int Hi_switch = 1;
+volatile unsigned long l_period = 1500;
+volatile unsigned int h_period = 20;
+volatile unsigned long pul_wid;
+#include <stdio.h>
+#include <stdlib.h>
+
+#define F_CPU 16000000UL
+#define BAUDRATE 9600
+#define BAUD_PRESCALLER (((F_CPU / (BAUDRATE * 16UL))) - 1)
+
+void USART_init(void);
+void USART_send( unsigned char data);
+void USART_putstring(char* StringPtr);
+
+char String[10] = "";
+
+
+void USART_init(void){
+	
+	/*Set baud rate */
+	UBRR0H = (unsigned char)(BAUD_PRESCALLER>>8);
+	UBRR0L = (unsigned char)BAUD_PRESCALLER;
+	//Enable receiver and transmitter
+	UCSR0B = (1<<RXEN0)|(1<<TXEN0);
+	/* Set frame format: 8data, 2stop bit */
+	UCSR0C = (1<<USBS0)|(3<<UCSZ00);
+}
+
+void USART_send( unsigned char data)
+{
+	
+	while(!(UCSR0A & (1<<UDRE0)));
+	UDR0 = data;
+	
+}
+
+void USART_putstring(char* StringPtr){
+	
+	while(*StringPtr != 0x00){
+		USART_send(*StringPtr);
+	StringPtr++;}
+	
+}
+
+unsigned int pulse_width(){
+	TCCR1B |= 0x40;  // input capture on rising edge
+	TIFR1 |= 0x20;   // clear the input capture flag
+	while (!(TIFR1 & 0x20)); // wait until we get the first edge
+	unsigned int temp = ICR1; // save the timestamp of the edge
+	TCCR1B &= 0xBF; // capture the falling edge
+	TIFR1 |= 0x20;   // clear the input capture flag
+	while (!(TIFR1 & 0x20)); // wait until we get the next edge
+	return ICR1 - temp;
+}
+
+void adc_init()
+{
+//AREF = AVcc
+ADMUX = (1<<REFS0);
+
+//ADC ENable and prescaler of 128
+//16000000/128 = 125000
+ADCSRA = (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
+
+}
+
+uint16_t adc_read(uint8_t ch)
+{
+// select the corresponding channel 0-7
+//ANDing with '7' will always keep the value 'ch' between 0 and 7
+
+ch &= 0b00000111;
+ADMUX = (ADMUX & 0xF8)|ch;
+
+//start single convertsion
+// write '1' to ADSC
+ADCSRA |= (1<<ADSC);
+
+// wait for conversion to complete
+while(ADCSRA & (1<<ADSC));
+return (ADC);
+}
+
+void adc_convert(volatile uint16_t val){
+	if( 0 <= val && val < 128 )
+	{
+		PORTB |= (1<<PORTB2);
+		PORTB |= (1<<PORTB3);
+		PORTB |= (1<<PORTB4);
+		
+	}
+	else if( 128 <= val && val < 256 )
+	{
+
+		PORTB &= ~(1<<PORTB2);
+		PORTB |= (1<<PORTB3);
+		PORTB |= (1<<PORTB4);
+
+	}
+	else if( 256 <= val && val < 384 )
+	{
+
+		PORTB |= (1<<PORTB2);
+		PORTB &= ~(1<<PORTB3);
+		PORTB |= (1<<PORTB4);
+
+
+	}
+	else if( 384 <= val && val < 512 )
+	{
+		PORTB &= ~(1<<PORTB2);
+		PORTB &= ~(1<<PORTB3);
+		PORTB |= (1<<PORTB4);
+	}
+	else if( 512 <= val && val < 640)
+	{
+		PORTB |= (1<<PORTB2);
+		PORTB |= (1<<PORTB3);
+		PORTB &= ~(1<<PORTB4);
+	}
+	else if( 640 <= val && val < 768)
+	{
+		PORTB &= ~(1<<PORTB2);
+		PORTB |= (1<<PORTB3);
+		PORTB &= ~(1<<PORTB4);
+	}
+	else if( 768 <= val && val < 896)
+	{
+		PORTB |= (1<<PORTB2);
+		PORTB &= ~(1<<PORTB3);
+		PORTB &= ~(1<<PORTB4);
+	}
+	else
+	{
+		PORTB &= ~(1<<PORTB2);
+		PORTB &= ~(1<<PORTB3);
+		PORTB &= ~(1<<PORTB4);
+	}
+}
+volatile uint16_t adc_res;
+int main(void)
+{
+	USART_init();
+	adc_init();
+	PORTD |= (1 << PORTD7);
+	DDRD |= (1 << PORTD6);
+	PORTD |= (1 << PORTD6);
+	DDRB |= (1 << PORTB1);
+	DDRB &= ~(1 << PORTB0);
+	PORTB |= (1 << PORTB1);
+	TCCR0A |= (1 << COM0A0);
+	TCNT0 = 0;
+	TCNT1 = 0;
+	TCCR0A |= (1 << WGM01);
+	TCCR0B |= (1 << CS02);
+	TCCR1B |= (1 << CS11) | (1 << ICES1);
+	TCCR1A |= (1 << COM1A0);
+	TIMSK1 |= (1 << OCIE1A);
+	TIMSK0 |= (1 << OCIE0A);
+	OCR0A = 0;
+	OCR1A = 0;
+	//DDRD &= ~(1 << PORTD7);
+	
+	/* Replace with your application code */
+	sei();
+	while (1)
+	{
+		adc_res = adc_read(0);
+		adc_convert(adc_res);
+		if (!(PIND & (1<<PORTD7)))
+		{
+			OCR0A = 0.02143 * pul_wid + 8.571;
+			sprintf(String,"Here, in");
+			//OCR0A = 15;
+		}
+		else
+		{
+			sprintf(String,"Here, out");
+			if(pul_wid <= 300)
+			{
+				
+				OCR0A = 15;
+			}
+			else if(pul_wid > 300 && pul_wid <= 600)
+			{
+				
+				OCR0A = 16;
+			}
+			else if (pul_wid > 600 && pul_wid <= 900)
+			{
+				
+				OCR0A = 18;
+			}
+			else if(pul_wid > 900 && pul_wid <= 1200)
+			{
+				
+				OCR0A = 20;
+			}
+			else if (pul_wid > 1200 && pul_wid <= 1500)
+			{
+				OCR0A = 22;
+			}
+			else if(pul_wid > 1500 && pul_wid <= 1800)
+			{
+				OCR0A = 24;
+			}
+			else if (pul_wid > 1800 && pul_wid <= 2100)
+			{
+				OCR0A = 27;
+			}
+			else
+			{
+				OCR0A = 30;
+			}
+		}
+		sprintf(String,"%d \n", adc_res); // Print to terminal (converts a number into a string)
+		USART_putstring(String);
+	}
+}
+ISR(TIMER1_COMPA_vect)
+{
+	if (Hi_switch)
+	{
+		OCR1A += h_period;
+		PORTB |= (1 << PORTB1);
+		Hi_switch = 0;
+	}
+	else{
+		PORTB &= ~(1 << PORTB1);
+		OCR1A += l_period;
+		pul_wid = pulse_width();
+		Hi_switch = 1;
+	}
+}
+ISR(TIMER0_COMPA_vect)
+{
+	PORTD ^= (1<<PORTD6);
+}
