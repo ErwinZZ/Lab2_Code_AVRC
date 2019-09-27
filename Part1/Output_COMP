@@ -1,0 +1,30 @@
+/*
+ * OutputCompareWave.c
+ *
+ * Created: 9/23/2019 8:53:36 PM
+ * Author : 86185
+ */ 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+volatile unsigned int period = 71;
+int main(void)
+{
+	DDRD |= (1 << PORTD6);
+	PORTD |= (1 << PORTD6);
+	TCCR0A |= (1 << COM0A0);
+	TCCR0B |= (1 << CS02);
+	TIMSK0 |= (1 << OCIE0A);
+	OCR0A  += TCNT0 + period;
+	sei();
+    /* Replace with your application code */
+    while (1) 
+    {
+		//PORTD |= (1<<PORTD5);
+    }
+}
+ISR(TIMER0_COMPA_vect)
+{
+	PORTD ^= (1<<PORTD6);
+	OCR0A += period;
+}
