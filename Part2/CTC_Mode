@@ -1,0 +1,26 @@
+/*
+ * CTC_Mode.c
+ *
+ * Created: 9/23/2019 8:53:36 PM
+ * Author : 86185
+ */ 
+
+#include <avr/io.h>
+int main(void)
+{
+	DDRD |= (1 << PORTD6);
+	PORTD |= (1 << PORTD6);
+	TCNT0 = 0;
+	TCCR0A |= (1<<WGM01);
+	TCCR0B |= (1<<CS02);
+	OCR0A = 70;
+    /* Replace with your application code */
+    while (1) 
+    {
+		if ((TIFR0 & (1 << OCF0A)))
+		{
+			PORTD ^= (1<<PORTD6);
+			TIFR0 |= (1 << OCF0A);
+		}
+    }
+}
